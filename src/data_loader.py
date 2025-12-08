@@ -413,6 +413,74 @@ def load_multiple_symbols(
     return data_dict
 
 
+def load_bars(
+    symbol: str,
+    data_dir: str,
+    timeframe: str,
+    timestamp_col: str = "timestamp",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list:
+    """
+    Load bars as a list of Bar objects for backtesting.
+    
+    This is a convenience wrapper around load_data() that returns
+    Bar objects instead of a DataFrame.
+    
+    Args:
+        symbol: Symbol to load
+        data_dir: Directory containing CSV files
+        timeframe: Timeframe (e.g., "1min", "5min")
+        timestamp_col: Name of timestamp column
+        start_date: Optional start date filter
+        end_date: Optional end date filter
+    
+    Returns:
+        List of Bar objects
+    
+    Raises:
+        FileNotFoundError: If data file not found
+        ValueError: If data invalid
+    """
+    from .indicators import Bar
+    
+    # Construct file path
+    data_path = Path(data_dir)
+    file_path = data_path / f"{symbol}_{timeframe}.csv"
+    
+    if not file_path.exists():
+        # Try without timeframe
+        file_path = data_path / f"{symbol}.csv"
+        if not file_path.exists():
+            raise FileNotFoundError(
+                f"Data file not found: {data_path}/{symbol}_{timeframe}.csv or {data_path}/{symbol}.csv"
+            )
+    
+    # Load DataFrame
+    df = load_data(
+        file_path=str(file_path),
+        symbol=symbol,
+        timestamp_col=timestamp_col,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    # Convert to Bar objects
+    bars = []
+    for _, row in df.iterrows():
+        bar = Bar(
+            timestamp=row['timestamp'],
+            open=row['open'],
+            high=row['high'],
+            low=row['low'],
+            close=row['close'],
+            volume=row['volume']
+        )
+        bars.append(bar)
+    
+    return bars
+
+
 if __name__ == "__main__":
     # Test data loading
     import sys

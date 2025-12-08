@@ -106,40 +106,6 @@ def update_vwap(
     return cum_pv, cum_vol, vwap
 
 
-def update_vwap(
-    cum_pv: float,
-    cum_vol: float,
-    bar: Bar,
-    use_typical_price: bool = True
-) -> Tuple[float, float, float]:
-    """
-    Incrementally update VWAP (for real-time or bar-by-bar processing).
-    
-    Args:
-        cum_pv: Cumulative price * volume
-        cum_vol: Cumulative volume
-        bar: Current bar
-        use_typical_price: If True, use (H+L+C)/3, else use close
-    
-    Returns:
-        Tuple of (updated_cum_pv, updated_cum_vol, vwap)
-    
-    Note:
-        - If volume is 0, keep previous VWAP (cum_pv and cum_vol unchanged)
-    """
-    price = bar.typical_price() if use_typical_price else bar.close
-    
-    if bar.volume > 0:
-        cum_pv += price * bar.volume
-        cum_vol += bar.volume
-        vwap = cum_pv / cum_vol if cum_vol > 0 else price
-    else:
-        # If volume is 0, keep previous VWAP
-        vwap = cum_pv / cum_vol if cum_vol > 0 else price
-    
-    return cum_pv, cum_vol, vwap
-
-
 # ==========================
 # ATR Calculation
 # ==========================
@@ -365,6 +331,87 @@ def calculate_pct_deviation(price: float, vwap: float) -> float:
 
 
 # ==========================
+# Convenience Functions for Backtest
+# ==========================
+
+def calculate_vwap(bars: list, use_typical_price: bool = True) -> float:
+    """
+    Calculate VWAP from a list of bars (convenience function for backtesting).
+    
+    Args:
+        bars: List of Bar objects
+        use_typical_price: If True, use (H+L+C)/3, else use close
+    
+    Returns:
+        Current VWAP value
+    """
+    cum_pv = 0.0
+    cum_vol = 0.0
+    
+    for bar in bars:
+        price = bar.typical_price() if use_typical_price else bar.close
+        if bar.volume > 0:
+            cum_pv += price * bar.volume
+            cum_vol += bar.volume
+    
+    return cum_pv / cum_vol if cum_vol > 0 else bars[-1].close
+
+
+def calculate_atr(bars: list, window: int = 14) -> float:
+    """
+    Calculate ATR from a list of bars (convenience function for backtesting).
+    
+    Args:
+        bars: List of Bar objects (should have at least window+1 bars)
+        window: ATR period
+    
+    Returns:
+        Current ATR value
+    """
+    if len(bars) < 2:
+        return 0.0
+    
+    true_ranges = []
+    for i in range(1, len(bars)):
+        high_low = bars[i].high - bars[i].low
+        high_close = abs(bars[i].high - bars[i-1].close)
+        low_close = abs(bars[i].low - bars[i-1].close)
+        tr = max(high_low, high_close, low_close)
+        true_ranges.append(tr)
+    
+    # Use simple moving average of TRs for the window
+    if len(true_ranges) < window:
+        return sum(true_ranges) / len(true_ranges) if true_ranges else 0.0
+    
+    return sum(true_ranges[-window:]) / window
+
+
+def calculate_vwap_df(df: pd.DataFrame, use_typical_price: bool = True) -> pd.Series:
+    """
+    Calculate VWAP for a DataFrame (returns Series).
+    
+    Convenience function for DataFrame-based workflows.
+    """
+    vwap_list = calculate_vwap(df, use_typical_price)
+    return pd.Series(vwap_list, index=df.index if isinstance(df.index, pd.DatetimeIndex) else range(len(vwap_list)))
+
+
+def calculate_atr_df(
+    df: pd.DataFrame,
+    period: int = 14,
+    atr_timeframe: str = "10min",
+    strategy_timeframe: str = "1min"
+) -> pd.Series:
+    """
+    Calculate ATR for a DataFrame (returns Series).
+    
+    Convenience function for DataFrame-based workflows.
+    """
+    atr_list = calculate_atr(df, period, atr_timeframe, strategy_timeframe)
+    return pd.Series(atr_list, index=df.index if isinstance(df.index, pd.DatetimeIndex) else range(len(atr_list)))
+
+
+# ==========================
 # Helper Functions
 # ==========================
 
@@ -401,35 +448,6 @@ def _df_to_bars(df: pd.DataFrame) -> List[Bar]:
         bars.append(bar)
     
     return bars
-
-
-# ==========================
-# Batch Calculations (for convenience)
-# ==========================
-
-def calculate_vwap_df(df: pd.DataFrame, use_typical_price: bool = True) -> pd.Series:
-    """
-    Calculate VWAP for a DataFrame (returns Series).
-    
-    Convenience function for DataFrame-based workflows.
-    """
-    vwap_list = calculate_vwap(df, use_typical_price)
-    return pd.Series(vwap_list, index=df.index if isinstance(df.index, pd.DatetimeIndex) else range(len(vwap_list)))
-
-
-def calculate_atr_df(
-    df: pd.DataFrame,
-    period: int = 14,
-    atr_timeframe: str = "10min",
-    strategy_timeframe: str = "1min"
-) -> pd.Series:
-    """
-    Calculate ATR for a DataFrame (returns Series).
-    
-    Convenience function for DataFrame-based workflows.
-    """
-    atr_list = calculate_atr(df, period, atr_timeframe, strategy_timeframe)
-    return pd.Series(atr_list, index=df.index if isinstance(df.index, pd.DatetimeIndex) else range(len(atr_list)))
 
 
 if __name__ == "__main__":

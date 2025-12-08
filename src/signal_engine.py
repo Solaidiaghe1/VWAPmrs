@@ -1,8 +1,8 @@
 """
 Signal generation engine for VWAP mean reversion strategy.
 
-This module handles entry/exit signal generation, position management,
-and strategy state tracking.
+This module handles entry/exit signal generation and strategy state tracking.
+Position management is handled by positions.PositionManager.
 """
 
 import numpy as np
@@ -13,9 +13,11 @@ from types import SimpleNamespace
 
 try:
     from .indicators import Bar, calculate_z_score, calculate_pct_deviation
+    from .positions import Position, PositionManager
 except ImportError:
     # For standalone testing
     from indicators import Bar, calculate_z_score, calculate_pct_deviation
+    from positions import Position, PositionManager
 
 
 # ==========================
@@ -23,38 +25,14 @@ except ImportError:
 # ==========================
 
 @dataclass
-class Position:
-    """Represents an open trading position."""
-    symbol: str
-    direction: str  # "LONG" or "SHORT"
-    entry_price: float
-    entry_time: datetime
-    entry_bar_idx: int
-    size: int  # Number of shares
-    stop_loss: float
-    entry_vwap: float
-    entry_z: float
-    
-    def unrealized_pnl(self, current_price: float) -> float:
-        """Calculate unrealized P&L."""
-        if self.direction == "LONG":
-            return (current_price - self.entry_price) * self.size
-        else:
-            return (self.entry_price - current_price) * self.size
-    
-    def is_stop_loss_hit(self, bar: Bar) -> bool:
-        """Check if stop loss was hit during this bar."""
-        if self.direction == "LONG":
-            return bar.low <= self.stop_loss
-        else:
-            return bar.high >= self.stop_loss
-
-
-@dataclass
 class StrategyState:
-    """Tracks strategy state for a single symbol."""
+    """
+    Tracks strategy state for a single symbol.
+    
+    Note: Position management is now handled by PositionManager.
+    This class only tracks indicator state and bar indexing.
+    """
     symbol: str
-    current_position: Optional[Position] = None
     last_exit_bar_idx: int = -1
     bar_idx: int = 0
     session_start: Optional[datetime] = None
@@ -63,16 +41,91 @@ class StrategyState:
     # VWAP state
     cum_pv: float = 0.0
     cum_vol: float = 0.0
-    vwap: float = 0.0
+    current_vwap: float = 0.0
     
     # Rolling statistics
     deviation_history: List[float] = field(default_factory=list)
+    rolling_mean_deviation: float = 0.0
+    rolling_std_deviation: float = 0.0
     volume_history: List[float] = field(default_factory=list)
     atr_values: List[float] = field(default_factory=list)
+
+
+# ==========================
+# State Management
+# ==========================
+
+def init_strategy_state(symbol: str, config: SimpleNamespace) -> StrategyState:
+    """
+    Initialize strategy state for a symbol.
     
-    # Daily tracking
-    daily_pnl: float = 0.0
-    trades_today: int = 0
+    Args:
+        symbol: Trading symbol
+        config: Strategy configuration
+    
+    Returns:
+        Initialized StrategyState
+    """
+    return StrategyState(
+        symbol=symbol,
+        last_exit_bar_idx=-1,
+        bar_idx=0,
+        session_start=None,
+        session_end=None,
+        cum_pv=0.0,
+        cum_vol=0.0,
+        current_vwap=0.0,
+        deviation_history=[],
+        rolling_mean_deviation=0.0,
+        rolling_std_deviation=1.0,  # Initialize to 1 to avoid division by zero
+        volume_history=[],
+        atr_values=[]
+    )
+
+
+def update_strategy_state(
+    state: StrategyState,
+    bar: Bar,
+    vwap: float,
+    config: SimpleNamespace
+) -> None:
+    """
+    Update strategy state with current bar data.
+    
+    Updates rolling statistics for deviation tracking.
+    
+    Args:
+        state: Strategy state to update
+        bar: Current bar
+        vwap: Current VWAP value
+        config: Strategy configuration
+    """
+    # Update VWAP in state
+    state.current_vwap = vwap
+    
+    # Calculate current deviation
+    deviation = bar.close - vwap
+    
+    # Update deviation history
+    state.deviation_history.append(deviation)
+    
+    # Keep only rolling window
+    if len(state.deviation_history) > config.rolling_window:
+        state.deviation_history.pop(0)
+    
+    # Calculate rolling statistics
+    if len(state.deviation_history) >= 2:
+        state.rolling_mean_deviation = np.mean(state.deviation_history)
+        state.rolling_std_deviation = np.std(state.deviation_history)
+        
+        # Avoid zero std
+        if state.rolling_std_deviation < 0.0001:
+            state.rolling_std_deviation = 0.0001
+    
+    # Update volume history
+    state.volume_history.append(bar.volume)
+    if len(state.volume_history) > config.rolling_window:
+        state.volume_history.pop(0)
 
 
 # ==========================
@@ -85,7 +138,8 @@ def generate_entry_signal(
     z_score: float,
     pct_deviation: float,
     config: SimpleNamespace,
-    state: StrategyState
+    state: StrategyState,
+    position_manager: PositionManager
 ) -> Optional[str]:
     """
     Generate entry signal (LONG, SHORT, or None).
@@ -97,13 +151,14 @@ def generate_entry_signal(
         pct_deviation: Current percentage deviation (from indicators.calculate_pct_deviation)
         config: Strategy configuration (dot-accessible)
         state: Current strategy state
+        position_manager: PositionManager instance
     
     Returns:
         "LONG", "SHORT", or None (no signal)
     
     Logic:
         1. Check entry filters (volume, time, cooldown)
-        2. Check if already in position
+        2. Check if already in position (via PositionManager)
         3. Check re-entry cooldown
         4. Generate signal based on signal_type (zscore or pct)
     """
@@ -111,8 +166,8 @@ def generate_entry_signal(
     if not _check_entry_filters(bar, state, config):
         return None
     
-    # Check if already in position
-    if state.current_position is not None:
+    # Check if already in position (via PositionManager)
+    if position_manager.get_position(state.symbol) is not None:
         return None
     
     # Check re-entry cooldown
@@ -232,6 +287,39 @@ def check_exit_signal(
     return False, ""
 
 
+def check_exit_condition(
+    position: Position,
+    bar: Bar,
+    vwap: float,
+    rolling_mean: float,
+    rolling_std: float,
+    config: SimpleNamespace
+) -> Tuple[bool, str]:
+    """
+    Check exit condition for backtest (convenience wrapper).
+    
+    Args:
+        position: Current position
+        bar: Current bar
+        vwap: Current VWAP
+        rolling_mean: Rolling mean of deviations
+        rolling_std: Rolling std of deviations
+        config: Strategy configuration
+    
+    Returns:
+        Tuple of (should_exit: bool, exit_reason: str)
+    """
+    # Calculate z-score and pct deviation
+    z_score = calculate_z_score(bar.close, vwap, rolling_mean, rolling_std)
+    pct_deviation = calculate_pct_deviation(bar.close, vwap)
+    
+    # Create minimal state (only session_end matters for exits)
+    state = StrategyState(symbol=position.symbol)
+    
+    # Check exit using main function
+    return check_exit_signal(position, bar, z_score, pct_deviation, config, state)
+
+
 # ==========================
 # Signal Calculation Helpers
 # ==========================
@@ -263,33 +351,42 @@ def calculate_signal_inputs(
 
 
 if __name__ == "__main__":
-    # Test signal engine
+    # Test signal engine with PositionManager integration
     from datetime import datetime, timedelta
-    from .config import load_config
+    from types import SimpleNamespace
+    
+    print("Testing signal_engine.py with PositionManager integration...")
     
     # Create test config
-    try:
-        from .config import load_config
-        config = load_config("config.yaml")
-    except:
-        print("Could not load config.yaml, using test config")
-        from types import SimpleNamespace
-        config = SimpleNamespace(
-            signal_type='zscore',
-            entry_z=2.0,
-            exit_z=0.3,
-            entry_pct=0.002,
-            exit_pct=0.0005,
-            cooldown_bars=5,
-            skip_open_minutes=15,
-            close_before_end_minutes=15,
-            max_holding_minutes=180,
-            min_vwap_bars=10,
-        )
+    config = SimpleNamespace(
+        signal_type='zscore',
+        entry_z=2.0,
+        exit_z=0.3,
+        entry_pct=0.002,
+        exit_pct=0.0005,
+        cooldown_bars=5,
+        skip_open_minutes=15,
+        close_before_end_minutes=15,
+        max_holding_minutes=180,
+        min_vwap_bars=10,
+        max_position_risk_pct=1.0,
+        daily_loss_limit_pct=3.0,
+        max_positions_per_symbol=1,
+        max_total_positions=5,
+        commission_per_trade=1.0,
+        slippage_bps=5.0,
+        slippage_model="bps",
+        initial_capital=100000
+    )
+    
+    # Create PositionManager
+    pm = PositionManager(config=config, initial_capital=config.initial_capital)
+    current_time = datetime(2025, 1, 2, 10, 0)
+    pm.reset_daily_tracking(current_time)
     
     # Create test bar
     test_bar = Bar(
-        timestamp=datetime(2025, 1, 2, 10, 0),
+        timestamp=current_time,
         open=100.0,
         high=100.5,
         low=99.8,
@@ -313,28 +410,40 @@ if __name__ == "__main__":
     z_score = 2.5  # Above entry threshold
     pct_deviation = 0.002
     
-    signal = generate_entry_signal(test_bar, vwap, z_score, pct_deviation, config, state)
-    print(f"Entry signal: {signal}")
+    signal = generate_entry_signal(test_bar, vwap, z_score, pct_deviation, config, state, pm)
+    print(f"✅ Entry signal: {signal}")
     
-    # Test exit signal
-    position = Position(
-        symbol="SPY",
-        direction="LONG",
-        entry_price=99.0,
-        entry_time=datetime(2025, 1, 2, 9, 45),
-        entry_bar_idx=15,
-        size=100,
-        stop_loss=98.0,
-        entry_vwap=99.5,
-        entry_z=2.0
-    )
+    # Test opening a position
+    if signal:
+        position = pm.open_position(
+            symbol="SPY",
+            direction=signal,
+            entry_price=test_bar.close,
+            entry_time=test_bar.timestamp,
+            entry_bar_idx=state.bar_idx,
+            stop_loss=98.0,
+            entry_vwap=vwap,
+            entry_z=z_score
+        )
+        print(f"✅ Opened position: {position.position_id}, Size: {position.size}")
+        
+        # Test exit signal
+        z_score_exit = 0.2  # Above exit threshold for SHORT
+        pct_deviation_exit = 0.0001
+        
+        should_exit, exit_reason = check_exit_signal(
+            position, test_bar, z_score_exit, pct_deviation_exit, config, state
+        )
+        print(f"✅ Should exit: {should_exit}, Reason: {exit_reason}")
+        
+        if should_exit:
+            pnl = pm.close_position(
+                position=position,
+                exit_price=test_bar.close,
+                exit_time=test_bar.timestamp,
+                exit_reason=exit_reason
+            )
+            print(f"✅ Closed position, P&L: ${pnl:.2f}")
     
-    state.current_position = position
-    z_score_exit = 0.2  # Above exit threshold for LONG
-    pct_deviation_exit = 0.0001
-    
-    should_exit, exit_reason = check_exit_signal(
-        position, test_bar, z_score_exit, pct_deviation_exit, config, state
-    )
-    print(f"Should exit: {should_exit}, Reason: {exit_reason}")
+    print("\n✅ All signal_engine tests passed!")
 

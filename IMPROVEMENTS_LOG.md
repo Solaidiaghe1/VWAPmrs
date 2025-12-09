@@ -2,7 +2,7 @@
 
 ## December 8, 2025 - Enhanced Monitoring & Fixed Win Rate Display
 
-### 🎯 **Improvements Implemented**
+### **Improvements Implemented**
 
 #### 1. **Real-Time VWAP and Z-Score Monitoring**
 
@@ -10,7 +10,7 @@
 
 **Output Format:**
 ```
-[2024-01-02 10:00:00] 📊 SPY: Price=$448.07 | VWAP=$449.31 | Z-Score=-0.92 | Dev=-0.28%
+[2024-01-02 10:00:00] SPY: Price=$448.07 | VWAP=$449.31 | Z-Score=-0.92 | Dev=-0.28%
 ```
 
 **Benefits:**
@@ -23,7 +23,7 @@
 ```python
 # Every 30 bars (30 minutes for 1-min data)
 if verbose and i > 0 and i % 30 == 0:
-    print(f"[{bar.timestamp}] 📊 {symbol}: Price=${bar.close:.2f} | VWAP=${vwap:.2f} | "
+    print(f"[{bar.timestamp}] {symbol}: Price=${bar.close:.2f} | VWAP=${vwap:.2f} | "
           f"Z-Score={z_score:.2f} | Dev={pct_deviation*100:.2f}%")
 ```
 
@@ -38,14 +38,13 @@ if verbose and i > 0 and i % 30 == 0:
 
 **After:**
 ```
-[2024-01-02 10:23:00] 🟢 ENTRY: LONG SPY @ $446.84 | Size: 164 | Stop: $445.23 | VWAP: $449.04 | Z: -2.01
+[2024-01-02 10:23:00] ENTRY: LONG SPY @ $446.84 | Size: 164 | Stop: $445.23 | VWAP: $449.04 | Z: -2.01
 ```
 
 **Improvements:**
-- ✅ Added emoji indicator (🟢) for visual clarity
-- ✅ Shows current VWAP at entry
-- ✅ Shows Z-score at entry (helps validate signal strength)
-- ✅ Removed redundant "Signal: zscore" (now clear from Z value)
+- Shows current VWAP at entry
+- Shows Z-score at entry (helps validate signal strength)
+- Removed redundant "Signal: zscore" (now clear from Z value)
 
 **Why This Matters:**
 - Quickly see how far price deviated from VWAP when entering
@@ -64,21 +63,20 @@ if verbose and i > 0 and i % 30 == 0:
 
 **After:**
 ```
-[2024-01-02 10:27:00] 🔴 EXIT (z_score_exit): SPY @ $450.13 | VWAP: $448.93 | Z: 1.87
+[2024-01-02 10:27:00] EXIT (z_score_exit): SPY @ $450.13 | VWAP: $448.93 | Z: 1.87
   → Closed @ $450.04 | P&L: $494.37
 ```
 
 **Improvements:**
-- ✅ Added emoji indicator (🔴) for exits
-- ✅ Shows VWAP at exit
-- ✅ Shows Z-score at exit (validates mean reversion)
-- ✅ Helps confirm exit logic
+- Shows VWAP at exit
+- Shows Z-score at exit (validates mean reversion)
+- Helps confirm exit logic
 
 **Example Analysis:**
 ```
 Entry:  Z=-2.01 (price below VWAP) → LONG
 Exit:   Z=+1.87 (price returned above VWAP) → Close
-Result: Mean reversion confirmed! ✅
+Result: Mean reversion confirmed!
 ```
 
 ---
@@ -93,14 +91,13 @@ Result: Mean reversion confirmed! ✅
 
 **After:**
 ```
-[2024-01-02 11:51:00] 🛑 STOP LOSS: SPY @ $442.67 | VWAP: $447.68 | Z: -1.99
+[2024-01-02 11:51:00] STOP LOSS: SPY @ $442.67 | VWAP: $447.68 | Z: -1.99
   → Closed @ $442.58 | P&L: $-279.71
 ```
 
 **Improvements:**
-- ✅ Added stop sign emoji (🛑) for critical alerts
-- ✅ Shows market context when stop hit
-- ✅ Helps analyze why stop was triggered
+- Shows market context when stop hit
+- Helps analyze why stop was triggered
 
 ---
 

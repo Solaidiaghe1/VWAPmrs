@@ -681,6 +681,6 @@ if __name__ == "__main__":
     
     # Print performance summary
     summary = pm.get_performance_summary()
-    print("\n📊 Performance Summary:")
+    print("\nPerformance Summary:")
     for key, value in summary.items():
         print(f"   {key}: {value}")

@@ -200,7 +200,7 @@ def run_backtest(config: Config, verbose: bool = True) -> Dict:
                 minutes_elapsed = (bar.timestamp.time().hour * 60 + bar.timestamp.time().minute)
                 session_start_minutes = 9 * 60 + 30  # 9:30 AM
                 if minutes_elapsed >= session_start_minutes:
-                    print(f"[{bar.timestamp}] 📊 {symbol}: Price=${bar.close:.2f} | VWAP=${vwap:.2f} | "
+                    print(f"[{bar.timestamp}] {symbol}: Price=${bar.close:.2f} | VWAP=${vwap:.2f} | "
                           f"Z-Score={z_score:.2f} | Dev={pct_deviation*100:.2f}%")
             
             # === CHECK TIME FILTERS ===
@@ -241,7 +241,7 @@ def run_backtest(config: Config, verbose: bool = True) -> Dict:
                 # Check stop loss
                 if current_position.is_stop_loss_hit(bar):
                     if verbose:
-                        print(f"[{bar.timestamp}] 🛑 STOP LOSS: {symbol} @ ${bar.close:.2f} | "
+                        print(f"[{bar.timestamp}] STOP LOSS: {symbol} @ ${bar.close:.2f} | "
                               f"VWAP: ${vwap:.2f} | Z: {z_score:.2f}")
                     _close_position(position_manager, current_position, bar, config, 
                                    all_fills, "stop_loss", verbose)
@@ -269,7 +269,7 @@ def run_backtest(config: Config, verbose: bool = True) -> Dict:
                 
                 if should_exit:
                     if verbose:
-                        print(f"[{bar.timestamp}] 🔴 EXIT ({exit_reason}): {symbol} @ ${bar.close:.2f} | "
+                        print(f"[{bar.timestamp}] EXIT ({exit_reason}): {symbol} @ ${bar.close:.2f} | "
                               f"VWAP: ${vwap:.2f} | Z: {z_score:.2f}")
                     _close_position(position_manager, current_position, bar, config, 
                                    all_fills, exit_reason, verbose)
@@ -369,7 +369,7 @@ def run_backtest(config: Config, verbose: bool = True) -> Dict:
                     
                     if verbose and position:
                         signal_type = "zscore" if config.signal_type == 'zscore' else "pct"
-                        print(f"[{bar.timestamp}] 🟢 ENTRY: {direction} {symbol} "
+                        print(f"[{bar.timestamp}] ENTRY: {direction} {symbol} "
                               f"@ ${fill.fill_price:.2f} | Size: {position_size} | "
                               f"Stop: ${stop_loss:.2f} | VWAP: ${vwap:.2f} | Z: {z_score:.2f}")
             
@@ -549,13 +549,13 @@ def _print_results_summary(results: Dict):
     print("PERFORMANCE SUMMARY")
     print("=" * 80)
     
-    print(f"\n📊 Trading Statistics:")
+    print(f"\nTrading Statistics:")
     print(f"  Total Trades:       {perf['total_trades']}")
     print(f"  Winning Trades:     {perf['winning_trades']}")
     print(f"  Losing Trades:      {perf['losing_trades']}")
     print(f"  Win Rate:           {perf['win_rate']:.2f}%")  # Fixed: win_rate is already a percentage
     
-    print(f"\n💰 Profit & Loss:")
+    print(f"\nProfit & Loss:")
     print(f"  Total P&L:          ${perf['total_pnl']:,.2f}")
     print(f"  Gross Profit:       ${perf['gross_profit']:,.2f}")
     print(f"  Gross Loss:         ${perf['gross_loss']:,.2f}")
@@ -563,11 +563,11 @@ def _print_results_summary(results: Dict):
     print(f"  Average Win:        ${perf['avg_win']:,.2f}")
     print(f"  Average Loss:       ${perf['avg_loss']:,.2f}")
     
-    print(f"\n📈 Returns:")
+    print(f"\nReturns:")
     print(f"  Final Capital:      ${perf['final_capital']:,.2f}")
     print(f"  Total Return:       {perf['total_return']:.2%}")
     
-    print(f"\n⚠️ Risk Metrics:")
+    print(f"\nRisk Metrics:")
     print(f"  Max Drawdown:       {perf.get('max_drawdown', 0):.2%}")
     print(f"  Sharpe Ratio:       {perf.get('sharpe_ratio', 0):.2f}")
     print(f"  Sortino Ratio:      {perf.get('sortino_ratio', 0):.2f}")
@@ -575,7 +575,7 @@ def _print_results_summary(results: Dict):
     
     if 'execution_summary' in results:
         exec_sum = results['execution_summary']
-        print(f"\n🔄 Execution:")
+        print(f"\nExecution:")
         print(f"  Total Fills:        {exec_sum['total_fills']}")
         print(f"  Avg Slippage:       ${exec_sum['avg_slippage_dollars']:.2f}")
         print(f"  Total Commission:   ${exec_sum['total_commission']:.2f}")
